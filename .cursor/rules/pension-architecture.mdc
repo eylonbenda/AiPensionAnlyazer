@@ -1,0 +1,45 @@
+---
+description: Architecture & feature design guidelines for Pension AI Analyzer backend
+alwaysApply: true
+---
+
+# Pension AI Analyzer – Architecture Rule
+
+- **Project overview**
+  - Backend-only pipeline: PDF upload → MinIO storage → job in Redis/BullMQ → worker processes job (PDF parse + AI extraction) → results stored in PostgreSQL → exposed via API.
+  - See `ARCHITECTURE.md` and `README.md` for full details and setup.
+
+- **Architecture principles**
+  - Keep responsibilities separated:
+    - `apps/api`: HTTP endpoints, validation, DB access, queueing.
+    - `apps/worker`: background processing, PDF parsing, AI calls, transactional writes.
+    - `packages/ai`: Zod schemas and AI provider abstraction, not business workflows.
+  - Prefer the existing queue-based pipeline for heavy/async work instead of doing it directly in the API.
+  - Extend the core data model (`Document`, `Job`, `Extraction`, `JobStatus`) instead of creating ad-hoc parallel structures.
+
+- **Data & schema changes**
+  - For new structured extraction fields:
+    - Update `PensionExtractionSchema` (and nested schemas like `PlanEntrySchema`) in `packages/ai/src/schema.ts`.
+    - Reflect persistent changes in Prisma at `packages/database/prisma/schema.prisma` and run migrations.
+    - Keep `Extraction.structured` as the canonical store for AI-structured JSON.
+  - Reuse domain interfaces from `packages/domain/src/index.ts` when exposing or transforming data at the API layer.
+
+- **Feature design patterns**
+  - New API behavior:
+    - Add/extend NestJS modules/controllers in `apps/api`.
+    - For lightweight sync operations, read/write directly via Prisma.
+    - For heavier or asynchronous work, enqueue jobs on `DOCUMENT_PROCESSING_QUEUE` and handle them in the worker.
+  - New background processing:
+    - Extend `apps/worker` with new handlers (or queues) while keeping job locking and status transitions consistent with the existing `processJobById` pattern.
+    - Capture operational errors in job `error` or `analysisError` fields rather than throwing unhandled errors.
+
+- **AI usage, validation & constraints**
+  - Always validate AI outputs with Zod schemas in `packages/ai` (e.g. `PensionExtractionSchema`) before trusting or persisting them.
+  - Prefer Zod transforms (e.g. `.nullable().optional().transform(v => v ?? "")`) over scattered manual null-checks.
+  - The system must not provide financial advice; AI output should stay as structured data and neutral “things to check”, not recommendations.
+
+- **Example: extending extraction**
+  - When you add a new numeric field (e.g. `managementFeeCapPercent`) to `PensionExtractionSchema`, also:
+    - Include it in the AI prompt implementation.
+    - Ensure it is exposed from the document analysis endpoint using the latest `Extraction.structured` payload, without bypassing validation.
+

@@ -1,0 +1,9 @@
+node_modules
+apps/*/dist
+packages/*/dist
+dist
+.env
+.env.*
+test_pdf.pdf
+*.log
+

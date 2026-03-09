@@ -1,0 +1,16 @@
+{
+  "name": "pension-ai-analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter @pension-analyzer/database prisma generate",
+    "db:migrate": "dotenv -e .env -- pnpm --filter @pension-analyzer/database prisma migrate dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "ts-node-dev": "^2.0.0",
+    "@types/node": "^20.17.0",
+    "dotenv-cli": "^7.4.2"
+  }
+}
