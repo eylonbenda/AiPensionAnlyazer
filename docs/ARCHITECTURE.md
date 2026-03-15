@@ -3,7 +3,7 @@
 This document describes the backend architecture of the Pension AI Analyzer.  
 It focuses on the PDF analysis pipeline (upload → storage → queue → worker → AI extraction → persistence → API), not on any end-user UI.
 
-The system is designed so that a client (CLI, script, or HTTP client) uploads a pension PDF, the API validates and stores it, a job is queued in Redis, a worker process parses the PDF and runs AI-powered structured extraction, and the results are written to PostgreSQL and exposed via the API.
+The system is designed so that a client (CLI, script, or HTTP client) authenticates (register/login), then uploads a pension PDF to the API. The API validates and stores the file, associates the document with the authenticated user, enqueues a job in Redis, and a worker process parses the PDF and runs AI-powered structured extraction. Results are written to PostgreSQL and exposed via the API; all document-related endpoints require a valid JWT and return only data owned by that user.
 
 The main external dependencies are:
 
@@ -16,11 +16,11 @@ The main external dependencies are:
 
 At a high level:
 
-1. A client uploads a pension PDF to the API.
-2. The API validates the file, stores it in MinIO, creates a `Document` and `Job` in PostgreSQL, and enqueues a message on a BullMQ queue in Redis.
+1. A client registers or logs in and receives a JWT (`POST /auth/register`, `POST /auth/login`).
+2. The client uploads a pension PDF with the JWT in the `Authorization` header. The API validates the file, stores it in MinIO, creates a `Document` (linked to the user) and `Job` in PostgreSQL, and enqueues a message on a BullMQ queue in Redis.
 3. A worker process (`apps/worker`) consumes jobs from the queue, downloads the PDF from MinIO, parses it, and runs AI-backed extraction to produce a structured JSON representation.
 4. The worker writes an `Extraction` record to PostgreSQL and marks the `Job` as completed (or failed).
-5. The API exposes endpoints for checking job status and retrieving the latest analysis for a document.
+5. The API exposes endpoints for job status, document analysis, tasks, and simulations; all require a valid JWT and return only data for documents owned by the authenticated user.
 
 #### Component diagram (mermaid)
 
@@ -44,9 +44,10 @@ flowchart LR
 ### Apps
 
 - **`apps/api` – HTTP API (NestJS)**
-  - Exposes endpoints for health checks, document upload, job status, and document analysis.
+  - **Auth:** `AuthModule` provides JWT-based authentication (`POST /auth/register`, `POST /auth/login`, `GET /auth/me`). Protected routes use `JwtAuthGuard`; document, analysis, tasks, and jobs endpoints are scoped to the authenticated user.
+  - Exposes endpoints for health checks, document upload, job status, and document analysis (all document-related endpoints require a valid Bearer token).
   - Validates uploads (size, MIME type) using shared constants from `@pension-analyzer/common`.
-  - Stores metadata in PostgreSQL via `@pension-analyzer/database`.
+  - Stores metadata in PostgreSQL via `@pension-analyzer/database`; each `Document` is linked to a `User` via `userId`.
   - Stores PDF files in MinIO.
   - Enqueues document processing jobs to Redis/BullMQ using a shared queue name.
 
@@ -61,7 +62,8 @@ flowchart LR
 
 - **`packages/database` – Prisma schema and client**
   - Defines the PostgreSQL schema in `prisma/schema.prisma`:
-    - `Document` – uploaded file metadata and relationships to `Job` and `Extraction`.
+    - `User` – user account (email, password hash, optional name); owns documents.
+    - `Document` – uploaded file metadata, `userId` (owner), and relationships to `Job` and `Extraction`.
     - `Job` – processing attempts with `JobStatus` enum, attempts, timestamps, and error fields.
     - `Extraction` – AI extraction snapshots (raw text, metadata, structured JSON, and AI error).
   - Exposes a Prisma client and type-safe data access for API and worker.
@@ -81,7 +83,7 @@ flowchart LR
 
 - **`packages/domain` – domain interfaces**
   - TypeScript interfaces that mirror the Prisma models for use at the domain/DTO layer:
-    - `Document`, `Job`, `JobStatus`, `Extraction`.
+    - `User`, `Document`, `Job`, `JobStatus`, `Extraction`, `Task`, etc.
   - Helps decouple higher-level logic from direct ORM types.
 
 - **`infra` – local infrastructure**
@@ -101,14 +103,26 @@ Defined in `packages/database/prisma/schema.prisma`:
   - Values: `PENDING`, `RUNNING`, `DONE`, `FAILED`.
   - Tracks the lifecycle of each processing job.
 
+- **`User`**
+  - **Fields**:
+    - `id: String` – UUID primary key.
+    - `email: String` – unique.
+    - `passwordHash: String` – bcrypt hash.
+    - `name: String?` – optional display name.
+    - `createdAt`, `updatedAt: DateTime`.
+  - **Relations**:
+    - `documents: Document[]` – documents owned by this user.
+
 - **`Document`**
   - **Fields**:
     - `id: String` – UUID primary key.
+    - `userId: String` – foreign key to `User` (owner).
     - `originalFileName: String` – original uploaded file name.
     - `mimeType: String` – MIME type (e.g. `application/pdf`).
     - `storageKey: String` – key used to locate the file in MinIO.
     - `createdAt: DateTime` – upload timestamp.
   - **Relations**:
+    - `user: User` – owner.
     - `jobs: Job[]` – 1-to-many relationship to `Job`.
     - `extractions: Extraction[]` – 1-to-many relationship to `Extraction`.
 
@@ -144,11 +158,22 @@ Defined in `packages/database/prisma/schema.prisma`:
 
 ```mermaid
 erDiagram
+  USER ||--o{ DOCUMENT : "has many"
   DOCUMENT ||--o{ JOB : "has many"
   DOCUMENT ||--o{ EXTRACTION : "has many"
 
+  USER {
+    string id
+    string email
+    string passwordHash
+    string name
+    datetime createdAt
+    datetime updatedAt
+  }
+
   DOCUMENT {
     string id
+    string userId
     string originalFileName
     string mimeType
     string storageKey
@@ -212,17 +237,18 @@ The `Extraction.structured` JSON field stores an instance of `PensionExtraction`
 
 ### Document upload & job creation (API)
 
-1. **Client upload** – A client sends a `multipart/form-data` `POST` request to the API (e.g. `POST /documents`) with a PDF file.
-2. **Validation** – The API validates:
+1. **Authentication** – The client obtains a JWT via `POST /auth/register` or `POST /auth/login`, then sends it in the `Authorization: Bearer <token>` header on subsequent requests.
+2. **Client upload** – A client sends a `multipart/form-data` `POST` request to the API (e.g. `POST /documents`) with a PDF file and a valid JWT.
+3. **Validation** – The API validates:
    - File size against `MAX_FILE_SIZE_BYTES`.
    - MIME type against `ALLOWED_MIME_TYPES` (PDF only).
-3. **Storage** – The API:
+4. **Storage** – The API:
    - Generates a `storageKey` for the PDF.
    - Uploads the file to MinIO using the configured bucket.
-4. **Database write** – The API:
-   - Creates a `Document` record with file metadata and `storageKey`.
+5. **Database write** – The API:
+   - Creates a `Document` record with file metadata, `storageKey`, and `userId` (from the JWT).
    - Creates an initial `Job` with `status = PENDING`, `attempts = 0`.
-5. **Queue enqueue** – The API enqueues a message on the BullMQ queue (`DOCUMENT_PROCESSING_QUEUE`) containing the `jobId`, backed by Redis.
+6. **Queue enqueue** – The API enqueues a message on the BullMQ queue (`DOCUMENT_PROCESSING_QUEUE`) containing the `jobId`, backed by Redis.
 
 ### Job processing (worker)
 
@@ -238,13 +264,15 @@ The `Extraction.structured` JSON field stores an instance of `PensionExtraction`
    - If the document is missing, it marks the job `FAILED` with `error = "Document not found"`.
    - Otherwise, it downloads the PDF from MinIO (bucket and client derived from `MINIO_*` env vars).
    - It uses `pdf-parse` to extract raw text and page count.
-4. **AI extraction** – The worker:
+4. **AI extraction & analysis** – The worker:
    - Calls `extractStructured({ text, meta: { numPages } })` from `@pension-analyzer/ai`.
    - If the call succeeds and `aiResult.ok` is `true`, it captures `aiResult.result.json` into `structured`.
+   - Computes deterministic red flags using `computeRedFlags` from `@pension-analyzer/ai` and builds initial task definitions using `buildTasksFromAnalysis` in `apps/worker`.
    - If the call fails or returns an error, it sets `analysisError` but still keeps the job’s core status aligned with PDF extraction success.
 5. **Transaction & status update** – Inside a Prisma transaction:
    - Creates a new `Extraction` with:
-     - `documentId`, `text`, `meta.numPages`, `structured`, and `analysisError`.
+     - `documentId`, `text`, `meta.numPages`, `structured`, `analysisError`, and `redFlags`.
+   - Upserts canonical `Task` rows for the document using the task definitions.
    - Updates the `Job` to `DONE` with `finishedAt`, increments `attempts`, and clears `error` (unless a hard failure occurred).
 6. **Failure handling** – On any hard error (e.g. MinIO, parsing issues), the worker:
    - Marks the `Job` as `FAILED`.
@@ -252,16 +280,29 @@ The `Extraction.structured` JSON field stores an instance of `PensionExtraction`
 
 ### Result retrieval (API)
 
-1. **Job status endpoint** – Clients can query the job via an endpoint such as `GET /jobs/:jobId`:
-   - Returns status (`PENDING`, `RUNNING`, `DONE`, `FAILED`), attempts, timestamps, and error information.
-2. **Document analysis endpoint** – Clients can query the latest analysis via an endpoint such as `GET /documents/:documentId/analysis`:
+All document-related endpoints require a valid JWT; the API verifies that the requested document (or job/task) belongs to the authenticated user and returns 404 otherwise.
+
+1. **Auth endpoints** – `POST /auth/register`, `POST /auth/login` (public); `GET /auth/me` (protected). Return `accessToken` and/or user profile.
+2. **Job status endpoint** – Clients can query the job via `GET /jobs/:jobId` (with JWT):
+   - Returns status (`PENDING`, `RUNNING`, `DONE`, `FAILED`), attempts, timestamps, and error information only if the job’s document belongs to the user.
+3. **Document analysis endpoint** – Clients can query the latest analysis via `GET /documents/:documentId/analysis` (with JWT):
+   - The API:
+     - Loads the latest `Extraction` and related `Task` rows for the document.
+     - Derives a short human-readable summary from `structured`.
+     - Computes projection and data-completeness gaps using `computeProjection` from `@pension-analyzer/ai`.
+     - Optionally computes a retirement gap vs a target monthly pension (using a deterministic calculator in the API).
+     - Runs a default simulation scenario using `runSimulation` from `@pension-analyzer/ai` and appends a log entry to `Extraction.meta.simulations`.
    - Returns:
-     - Basic `Document` metadata.
+     - Basic `Document` metadata and job information.
      - `hasText` flag indicating that raw text extraction succeeded.
-     - The most recent `Extraction` record’s `structured` JSON.
-     - Any `analysisError` describing AI issues.
-     - A short human-readable summary derived from the structured data.
-3. **Idempotency & history** – Multiple extractions can exist per document, but API consumers typically care about the latest `Extraction` (e.g. last successful run after a configuration change).
+     - The latest `structured` JSON and any `analysisError`.
+     - Red flags and counts.
+     - Projection summary and projection gaps.
+     - Optional retirement gap vs a requested target monthly pension.
+     - The latest default simulation result.
+     - The current list of tasks for the document from the `Task` table.
+4. **Tasks** – `GET /documents/:documentId/tasks`, `PATCH /tasks/:taskId` (with JWT); scoped to the user’s documents.
+5. **Idempotency & history** – Multiple extractions can exist per document, but API consumers typically care about the latest `Extraction` (e.g. last successful run after a configuration change).
 
 #### Sequence diagram (upload to result)
 
@@ -275,10 +316,14 @@ sequenceDiagram
   participant DB as PostgreSQL
   participant AI as AI Provider
 
-  C->>A: POST /documents (PDF)
-  A->>A: Validate size & MIME
+  C->>A: POST /auth/register or POST /auth/login
+  A->>DB: Create User or validate credentials
+  A-->>C: 200 { accessToken, user }
+
+  C->>A: POST /documents (PDF) + Authorization Bearer
+  A->>A: Validate JWT and size & MIME
   A->>M: Upload PDF (storageKey)
-  A->>DB: Create Document & Job (PENDING)
+  A->>DB: Create Document (userId) & Job (PENDING)
   A->>R: Enqueue job { jobId }
   A-->>C: 200 { documentId, jobId }
 
@@ -289,14 +334,27 @@ sequenceDiagram
   W->>W: Parse PDF (pdf-parse)
   W->>AI: extractStructured(text, meta)
   AI-->>W: Structured JSON or error
-  W->>DB: Tx: create Extraction, update Job (DONE/FAILED)
+  W->>DB: Tx: create Extraction (with structured, redFlags), upsert Tasks, update Job (DONE/FAILED)
 
-  C->>A: GET /jobs/:jobId
+  C->>A: GET /jobs/:jobId + Authorization Bearer
+  A->>DB: Load Job, verify document.userId
   A-->>C: Job status
 
-  C->>A: GET /documents/:documentId/analysis
+  C->>A: GET /documents/:documentId/analysis + Authorization Bearer
+  A->>DB: Load latest Extraction and Tasks for Document
+  A->>A: Compute projection, gaps, optional retirement gap, and default simulation
+  A-->>C: Analysis payload (summary, structured, redFlags, projection, gaps, retirementGap, simulation, tasks)
+
+  C->>A: GET /documents/:documentId/plan
+  A->>DB: Load latest Extraction and Tasks for Document
+  A->>A: Compute projection and optional retirement gap
+  A-->>C: Curated plan view (summary, projection, retirementGap, redFlags, gaps, tasks)
+
+  C->>A: POST /documents/:documentId/simulations
   A->>DB: Load latest Extraction for Document
-  A-->>C: Analysis summary + structured JSON
+  A->>A: runSimulation(structured, scenario)
+  A->>DB: Append simulation log entry to Extraction.meta
+  A-->>C: Simulation result (scenario + summary)
 ```
 
 ## Configuration & Environments
@@ -308,6 +366,7 @@ sequenceDiagram
     - `REDIS_URL` – Redis connection string for BullMQ (default `redis://localhost:6379`).
     - `MINIO_ENDPOINT`, `MINIO_PORT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` – MinIO connection and bucket configuration.
     - `API_PORT` – port for the NestJS API (default `3000`).
+    - `JWT_SECRET` – secret used to sign JWTs (required for auth).
     - `AI_PROVIDER` – `stub` or `openai`.
     - `OPENAI_API_KEY` – required when `AI_PROVIDER=openai`.
     - Optional AI tuning: `AI_MODEL` (default `gpt-4o-mini`), `AI_TEMPERATURE`, `AI_MAX_TOKENS`, `AI_TIMEOUT_MS`.

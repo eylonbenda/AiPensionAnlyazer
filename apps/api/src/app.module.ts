@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
+import { AuthModule } from './auth/auth.module';
 import { DocumentsModule } from './documents/documents.module';
 import { JobsModule } from './jobs/jobs.module';
 import { StorageModule } from './storage/storage.module';
@@ -8,7 +9,7 @@ import { AnalysisModule } from './analysis/analysis.module';
 import { TasksModule } from './tasks/tasks.module';
 
 @Module({
-  imports: [DocumentsModule, JobsModule, StorageModule, QueueModule, AnalysisModule, TasksModule],
+  imports: [AuthModule, DocumentsModule, JobsModule, StorageModule, QueueModule, AnalysisModule, TasksModule],
   controllers: [AppController],
   providers: [],
 })

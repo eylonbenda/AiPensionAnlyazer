@@ -1,0 +1,9 @@
+Phase 5: User accounts, JWT auth, tests, and docs
+
+- Add User model and Document.userId; migration with backfill
+- Auth: register, login, GET /auth/me; JwtAuthGuard, CurrentUser
+- Protect documents, analysis, tasks, jobs by userId
+- Global ValidationPipe and CORS; JWT_SECRET in .env.example
+- Jest + auth unit and e2e tests (mocked DB/bcrypt)
+- docs: ARCHITECTURE, DATABASE-SCHEMA, FEATURE_LOG, TESTING,
+  PLAN_PHASE5_EXTENDED_AUTH, PROJECT_CONTEXT; rules and README

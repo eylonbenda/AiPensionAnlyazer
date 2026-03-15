@@ -17,4 +17,13 @@ This file tracks high-level features implemented in the project. Update it whene
   - Implemented a worker-side task generator that converts red flags and projection/gap signals into neutral “things to check” tasks, upserting them per document.
   - Added API support to fetch and update tasks (`GET /documents/:documentId/tasks`, `PATCH /tasks/:taskId`) and included the current task list in the analysis response.
 
+## 2026-03-15
+
+- **Phase 5: User Accounts & Secure Document Access**
+  - Added `User` model (email, password hash, optional name) and linked `Document` to `User` via `userId`.
+  - Implemented JWT-based authentication: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`; all document, analysis, tasks, and jobs endpoints require a valid Bearer token and are scoped to the authenticated user.
+  - Applied `JwtAuthGuard` and ownership checks across documents, analysis, tasks, and jobs; added global `ValidationPipe` and CORS.
+  - Environment: `JWT_SECRET` required for signing tokens (see `.env.example`).
+  - **Phase 5 tests:** Jest added for `apps/api`. Auth unit tests (`auth.service.spec.ts`) and auth e2e tests (`auth.e2e-spec.ts`) cover register, login, and `GET /auth/me` (with and without token). See `docs/TESTING.md`.
+
 

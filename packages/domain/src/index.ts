@@ -1,5 +1,14 @@
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Document {
   id: string;
+  userId: string;
   originalFileName: string;
   mimeType: string;
   storageKey: string;

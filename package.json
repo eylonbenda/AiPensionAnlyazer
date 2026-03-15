@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
+    "test": "pnpm --filter @pension-analyzer/api test && pnpm --filter @pension-analyzer/ai test",
     "db:generate": "pnpm --filter @pension-analyzer/database prisma generate",
     "db:migrate": "dotenv -e .env -- pnpm --filter @pension-analyzer/database prisma migrate dev"
   },

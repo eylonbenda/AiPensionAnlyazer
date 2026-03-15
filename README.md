@@ -101,6 +101,13 @@ pnpm --filter @pension-analyzer/worker start:dev
 
 The worker connects to Redis and waits for jobs on the document processing queue.
 
+## Tests
+
+- **API (Phase 5 auth and beyond):** From repo root, run `pnpm --filter @pension-analyzer/api test`. Uses Jest; unit tests mock the database; e2e tests mock Prisma and bcrypt so no running DB is required.
+- **AI package:** `pnpm --filter @pension-analyzer/ai test` (Vitest; projection, simulation, red-flags engines).
+
+When adding a new feature, add or extend tests so the new behavior is covered (see `docs/TESTING.md`).
+
 ## Structured AI extraction and analysis
 
 After the worker extracts raw text from uploaded PDF documents, it runs an AI-backed structured extraction step via the shared `@pension-analyzer/ai` package. By default the worker uses a **stub** implementation (no API key required). For real extraction, set:

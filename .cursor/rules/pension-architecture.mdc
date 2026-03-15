@@ -24,9 +24,14 @@ alwaysApply: true
     - Keep `Extraction.structured` as the canonical store for AI-structured JSON.
   - Reuse domain interfaces from `packages/domain/src/index.ts` when exposing or transforming data at the API layer.
 
+- **Authentication**
+  - Document-related endpoints are protected with `JwtAuthGuard`; clients send `Authorization: Bearer <token>`.
+  - Always scope queries by the authenticated user: e.g. load documents with `where: { id: documentId, userId }` so users only see their own data. Return 404 when the resource does not belong to the user.
+
 - **Feature design patterns**
   - New API behavior:
     - Add/extend NestJS modules/controllers in `apps/api`.
+    - For protected resources, use `JwtAuthGuard` and `CurrentUser` (or `req.user`) and pass `userId` into services; verify document/task/job ownership before returning data.
     - For lightweight sync operations, read/write directly via Prisma.
     - For heavier or asynchronous work, enqueue jobs on `DOCUMENT_PROCESSING_QUEUE` and handle them in the worker.
   - New background processing:
@@ -42,4 +47,15 @@ alwaysApply: true
   - When you add a new numeric field (e.g. `managementFeeCapPercent`) to `PensionExtractionSchema`, also:
     - Include it in the AI prompt implementation.
     - Ensure it is exposed from the document analysis endpoint using the latest `Extraction.structured` payload, without bypassing validation.
+
+
+- **Pending implementation plans**
+  - **Phase 5 extended auth:** Google OAuth, refresh tokens, password reset, email verification, roles/admin. Full specification and implementation order: `docs/PLAN_PHASE5_EXTENDED_AUTH.md`. Use this plan when implementing extended auth in a new conversation.
+
+Before implementing features, review:
+docs/PROJECT_CONTEXT.md
+docs/ARCHITECTURE.md
+docs/DATABASE-SCHEMA.md
+
+After implementing features, update the above docs and this rule file if the change affects behavior, endpoints, data model, or architecture (see `.cursor/rules/docs-sync.mdc`). Add or extend tests for every new feature (unit and/or e2e as appropriate); see `docs/TESTING.md`.
 

@@ -1,0 +1,28 @@
+---
+description: Keep docs and architecture rule in sync with every code change
+alwaysApply: true
+---
+
+# Docs & Rules Sync Convention
+
+Whenever you modify code under `apps/`, `packages/`, or `infra/`, you MUST also review and update the following files if the change affects behavior, data flow, endpoints, DB schema, or architectural patterns:
+
+- `docs/ARCHITECTURE.md` – processing flow, sequence diagram, component descriptions, endpoint list.
+- `docs/PROJECT_CONTEXT.md` – product flow, engine descriptions, roadmap items.
+- `docs/DATABASE-SCHEMA.md` – models, enums, relations, migration notes.
+- `.cursor/rules/pension-architecture.mdc` – architecture principles, feature design patterns, data/schema rules.
+
+## When to update
+
+- New or changed API endpoint → update `ARCHITECTURE.md` (endpoint list + sequence diagram).
+- New or changed worker pipeline step → update `ARCHITECTURE.md` (processing flow section).
+- New or changed Prisma model/enum/field → update `DATABASE-SCHEMA.md` and `ARCHITECTURE.md`.
+- New engine or package (projection, simulation, tasks, rules) → update `PROJECT_CONTEXT.md` and `ARCHITECTURE.md`.
+- New architectural pattern or responsibility shift → update `.cursor/rules/pension-architecture.mdc`.
+
+## How to update
+
+- Keep docs concise and factual; match the existing style of each file.
+- Update mermaid diagrams (sequence, ER, flowchart) when the flow they depict changes.
+- Do NOT remove information about unchanged parts; only add or revise what changed.
+- Do the doc updates in the same response as the code change, not as a separate follow-up.

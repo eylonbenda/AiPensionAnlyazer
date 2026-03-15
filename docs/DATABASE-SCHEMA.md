@@ -33,13 +33,33 @@ Lifecycle of a document-processing job.
 
 ## Models
 
+### `User`
+
+User account for authentication and document ownership.
+
+| Column         | Type     | Nullable | Description |
+|----------------|----------|----------|-------------|
+| `id`           | UUID     | No       | Primary key (default: `uuid()`) |
+| `email`        | String   | No       | Unique email address |
+| `passwordHash` | String   | No       | Bcrypt hash of password |
+| `name`         | String   | Yes      | Optional display name |
+| `createdAt`    | DateTime | No       | When the user was created |
+| `updatedAt`    | DateTime | No       | Last update (auto) |
+
+**Relations**
+
+- `documents` → one-to-many → `Document`
+
+---
+
 ### `Document`
 
-Represents an uploaded PDF file. Stored in object storage (MinIO); this row holds metadata and the storage key.
+Represents an uploaded PDF file. Stored in object storage (MinIO); this row holds metadata and the storage key. Each document is owned by a user.
 
 | Column             | Type     | Nullable | Description |
 |--------------------|----------|----------|-------------|
 | `id`               | UUID     | No       | Primary key (default: `uuid()`) |
+| `userId`           | UUID     | No       | FK → `User.id` (owner) |
 | `originalFileName` | String   | No       | Original name of the uploaded file |
 | `mimeType`         | String   | No       | MIME type (e.g. `application/pdf`) |
 | `storageKey`       | String   | No       | Key used to fetch the file from MinIO |
@@ -47,6 +67,7 @@ Represents an uploaded PDF file. Stored in object storage (MinIO); this row hold
 
 **Relations**
 
+- `user` → many-to-one → `User`
 - `jobs` → one-to-many → `Job`
 - `extractions` → one-to-many → `Extraction`
 
@@ -99,11 +120,14 @@ Result of processing one document: raw text from the PDF and optional AI-derived
 ## Entity relationship (high level)
 
 ```
-Document 1 ──────┬──────── N Job
-                 │
-                 └──────── N Extraction
+User 1 ─────────── N Document
+                       │
+                       ├──────── N Job
+                       │
+                       └──────── N Extraction
 ```
 
+- Each **User** has many **Document**s (documents are scoped to the owning user).
 - Each **Document** has many **Job**s (one per processing run; latest by `createdAt`).
 - Each **Document** has many **Extraction**s (one per successful text extraction; latest by `createdAt`).
 - **Job** and **Extraction** are not directly linked; correlation is by `documentId` and ordering by time.

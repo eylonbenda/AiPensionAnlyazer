@@ -6,9 +6,9 @@ type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
 
 @Injectable()
 export class TasksService {
-  async getTasksForDocument(documentId: string) {
-    const document = await prisma.document.findUnique({
-      where: { id: documentId },
+  async getTasksForDocument(documentId: string, userId: string) {
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, userId },
     });
 
     if (!document) {
@@ -23,16 +23,17 @@ export class TasksService {
     return tasks;
   }
 
-  async updateTaskStatus(taskId: string, status: string) {
+  async updateTaskStatus(taskId: string, userId: string, status: string) {
     if (!ALLOWED_STATUSES.includes(status as AllowedStatus)) {
       throw new BadRequestException('Invalid task status');
     }
 
     const existing = await prisma.task.findUnique({
       where: { id: taskId },
+      include: { document: true },
     });
 
-    if (!existing) {
+    if (!existing || existing.document.userId !== userId) {
       throw new NotFoundException('Task not found');
     }
 

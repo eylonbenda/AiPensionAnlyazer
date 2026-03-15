@@ -33,8 +33,21 @@ enum TaskSourceType {
   SYSTEM
 }
 
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  documents Document[]
+}
+
 model Document {
   id               String       @id @default(uuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   originalFileName String
   mimeType         String
   storageKey       String

@@ -26,7 +26,7 @@ export class DocumentsService {
     }
   }
 
-  async createDocumentFromUpload(file: UploadedFileType) {
+  async createDocumentFromUpload(file: UploadedFileType, userId: string) {
     this.validateFile(file);
 
     const storageKey = await this.storageService.uploadFile(
@@ -38,6 +38,7 @@ export class DocumentsService {
     const result = await prisma.$transaction(async (tx) => {
       const createdDocument = await tx.document.create({
         data: {
+          userId,
           originalFileName: file.originalname,
           mimeType: file.mimetype,
           storageKey,

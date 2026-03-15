@@ -19,14 +19,22 @@ export interface ExtractionResponse {
 
 @Injectable()
 export class AnalysisService {
-  async getDocumentAnalysis(documentId: string) {
-    const document = await prisma.document.findUnique({
-      where: { id: documentId },
+  private async getDocumentForUser(documentId: string, userId: string) {
+    const document = await prisma.document.findFirst({
+      where: { id: documentId, userId },
     });
-
     if (!document) {
       throw new NotFoundException('Document not found');
     }
+    return document;
+  }
+
+  async getDocumentAnalysis(
+    documentId: string,
+    userId: string,
+    targetMonthlyPension: number | null = null,
+  ) {
+    const document = await this.getDocumentForUser(documentId, userId);
 
     const [latestJob] = await prisma.job.findMany({
       where: { documentId },
@@ -53,6 +61,14 @@ export class AnalysisService {
         ? computeProjection(structured as any)
         : null;
 
+    const retirementGap =
+      projectionResult && targetMonthlyPension
+        ? this.computeRetirementGap(
+            projectionResult.summary,
+            targetMonthlyPension,
+          )
+        : null;
+
     const defaultSimulationScenario: SimulationScenario = {
       globalEmployeeIncreasePercent: 10,
     };
@@ -63,27 +79,7 @@ export class AnalysisService {
         : null;
 
     if (extraction && simulationResult) {
-      const existingMeta = (extraction.meta ?? {}) as any;
-      const simulationsArray = Array.isArray(existingMeta.simulations)
-        ? existingMeta.simulations
-        : [];
-
-      const updatedMeta = {
-        ...existingMeta,
-        simulations: [
-          ...simulationsArray,
-          {
-            scenario: simulationResult.scenario,
-            summary: simulationResult.summary,
-            runAt: new Date().toISOString(),
-          },
-        ],
-      };
-
-      await prisma.extraction.update({
-        where: { id: extraction.id },
-        data: { meta: updatedMeta },
-      });
+      await this.appendSimulationMeta(extraction.id, simulationResult);
     }
 
     const tasks = await prisma.task.findMany({
@@ -115,9 +111,41 @@ export class AnalysisService {
       projection: projectionResult?.summary ?? null,
       projectionGaps: projectionResult?.gaps ?? [],
       projectionGapCount: projectionResult?.gaps.length ?? 0,
+      retirementGap,
       simulation: simulationResult,
       tasks,
     };
+  }
+
+  async runCustomSimulation(
+    documentId: string,
+    userId: string,
+    scenario: SimulationScenario,
+  ) {
+    await this.getDocumentForUser(documentId, userId);
+
+    const extraction = await prisma.extraction.findFirst({
+      where: { documentId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (
+      !extraction ||
+      !extraction.structured ||
+      typeof extraction.structured !== 'object' ||
+      !Array.isArray((extraction.structured as any).plans)
+    ) {
+      throw new NotFoundException('Structured extraction with plans not found for this document');
+    }
+
+    const simulationResult = runSimulation(
+      extraction.structured as any,
+      scenario,
+    );
+
+    await this.appendSimulationMeta(extraction.id, simulationResult);
+
+    return simulationResult;
   }
 
   private buildSummary(structured: any): string | null {
@@ -175,14 +203,11 @@ export class AnalysisService {
     return parts.join(' | ');
   }
 
-  async getDocumentExtraction(documentId: string): Promise<ExtractionResponse> {
-    const document = await prisma.document.findUnique({
-      where: { id: documentId },
-    });
-
-    if (!document) {
-      throw new NotFoundException('Document not found');
-    }
+  async getDocumentExtraction(
+    documentId: string,
+    userId: string,
+  ): Promise<ExtractionResponse> {
+    await this.getDocumentForUser(documentId, userId);
 
     const extraction = await prisma.extraction.findFirst({
       where: { documentId },
@@ -221,13 +246,104 @@ export class AnalysisService {
     result.total = redFlags.length;
 
     for (const flag of redFlags) {
-      const severity = flag?.severity;
+      const severity = flag?.severity as string | undefined;
       if (severity === 'high' || severity === 'medium' || severity === 'low') {
         result.bySeverity[severity] += 1;
       }
     }
 
     return result;
+  }
+
+  private async appendSimulationMeta(
+    extractionId: string,
+    simulationResult: {
+      scenario: SimulationScenario;
+      summary: unknown;
+    },
+  ) {
+    const extraction = await prisma.extraction.findUnique({
+      where: { id: extractionId },
+      select: { meta: true },
+    });
+
+    const existingMeta = (extraction?.meta ?? {}) as any;
+    const simulationsArray = Array.isArray(existingMeta.simulations)
+      ? existingMeta.simulations
+      : [];
+
+    const updatedMeta = {
+      ...existingMeta,
+      simulations: [
+        ...simulationsArray,
+        {
+          scenario: simulationResult.scenario,
+          summary: simulationResult.summary,
+          runAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    await prisma.extraction.update({
+      where: { id: extractionId },
+      data: { meta: updatedMeta },
+    });
+  }
+
+  private computeRetirementGap(
+    projectionSummary: {
+      totalMonthlyPensionWithDeposits: number | null;
+      totalProjectedWithDeposits: number | null;
+      currency: string;
+    },
+    targetMonthlyPension: number,
+  ) {
+    if (!projectionSummary || !targetMonthlyPension || targetMonthlyPension <= 0) {
+      return null;
+    }
+
+    const {
+      totalMonthlyPensionWithDeposits,
+      totalProjectedWithDeposits,
+      currency,
+    } = projectionSummary;
+
+    let projectedMonthlyPension = totalMonthlyPensionWithDeposits;
+
+    if (
+      projectedMonthlyPension == null &&
+      totalProjectedWithDeposits != null &&
+      totalProjectedWithDeposits > 0
+    ) {
+      // Conservative approximation as described in PROJECT_CONTEXT.md
+      projectedMonthlyPension = totalProjectedWithDeposits / 200;
+    }
+
+    if (projectedMonthlyPension == null) {
+      return null;
+    }
+
+    const gapAmount = targetMonthlyPension - projectedMonthlyPension;
+    const gapPercent =
+      targetMonthlyPension > 0 ? (gapAmount / targetMonthlyPension) * 100 : null;
+
+    let status: 'SHORTFALL' | 'ON_TRACK' | 'SURPLUS';
+    if (projectedMonthlyPension < targetMonthlyPension) {
+      status = 'SHORTFALL';
+    } else if (projectedMonthlyPension > targetMonthlyPension) {
+      status = 'SURPLUS';
+    } else {
+      status = 'ON_TRACK';
+    }
+
+    return {
+      targetMonthlyPension,
+      projectedMonthlyPension,
+      gapAmount,
+      gapPercent,
+      status,
+      currency,
+    };
   }
 }
 
