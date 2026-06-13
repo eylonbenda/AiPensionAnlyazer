@@ -108,6 +108,96 @@ The worker connects to Redis and waits for jobs on the document processing queue
 
 When adding a new feature, add or extend tests so the new behavior is covered (see `docs/TESTING.md`).
 
+## Phase 5 auth curls (for Postman)
+
+Use these requests to test the latest auth/login flow and authenticated endpoints.
+
+### 1) Register user
+
+```bash
+curl -X POST http://localhost:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test.user@example.com",
+    "password": "StrongPass123!",
+    "name": "Test User"
+  }'
+```
+
+### 2) Login user
+
+```bash
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test.user@example.com",
+    "password": "StrongPass123!"
+  }'
+```
+
+Expected response includes:
+
+```json
+{
+  "accessToken": "<jwt>",
+  "user": {
+    "id": "<uuid>",
+    "email": "test.user@example.com",
+    "name": "Test User"
+  }
+}
+```
+
+### 3) Get current user (`/auth/me`)
+
+```bash
+curl http://localhost:3000/auth/me \
+  -H "Authorization: Bearer <jwt>"
+```
+
+### 4) Upload document with JWT
+
+```bash
+curl -X POST http://localhost:3000/documents \
+  -H "Authorization: Bearer <jwt>" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@/path/to/your.pdf"
+```
+
+### Postman quick setup (recommended)
+
+Create a Postman environment (for example: `Pension Local`) with:
+
+- `baseUrl` = `http://localhost:3000`
+- `email` = `test.user@example.com`
+- `password` = `StrongPass123!`
+- `jwt` = (leave empty, filled after login)
+
+Use these request URLs in Postman:
+
+- `{{baseUrl}}/auth/register`
+- `{{baseUrl}}/auth/login`
+- `{{baseUrl}}/auth/me`
+- `{{baseUrl}}/documents`
+
+For protected requests, set header:
+
+- `Authorization: Bearer {{jwt}}`
+
+In the **Tests** tab of the `POST {{baseUrl}}/auth/login` request, add:
+
+```javascript
+const json = pm.response.json();
+if (json.accessToken) {
+  pm.environment.set("jwt", json.accessToken);
+}
+```
+
+Now `auth/me` and `documents` will automatically use the latest token in the same environment.
+
+Prebuilt import file: `docs/postman/Pension-Local.postman_collection.json`.
+Matching environment file: `docs/postman/Pension-Local.postman_environment.json`.
+
 ## Structured AI extraction and analysis
 
 After the worker extracts raw text from uploaded PDF documents, it runs an AI-backed structured extraction step via the shared `@pension-analyzer/ai` package. By default the worker uses a **stub** implementation (no API key required). For real extraction, set:

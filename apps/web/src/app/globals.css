@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+:root {
+  /* Semantic tokens (light mode) */
+  --background: #f6f8fb;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --muted: #eef3f9;
+  --muted-foreground: #64748b;
+
+  /* Fintech primary (trust + clarity) */
+  --primary: #1e40af;
+  --primary-foreground: #ffffff;
+  --accent: #334155;
+  --accent-foreground: #f8fafc;
+
+  --destructive: #c2414c;
+  --destructive-foreground: #ffffff;
+
+  --border: #e2e8f0;
+  --ring: rgba(30, 64, 175, 0.28);
+
+  --radius: 16px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #070a12;
+    --foreground: #e8eefc;
+    --card: rgba(255, 255, 255, 0.06);
+    --card-foreground: #e8eefc;
+    --muted: rgba(148, 163, 184, 0.16);
+    --muted-foreground: #9aa9c0;
+
+    --primary: #60a5fa;
+    --primary-foreground: #07101b;
+    --accent: #38bdf8;
+    --accent-foreground: #06111a;
+
+    --destructive: #f87171;
+    --destructive-foreground: #0b1220;
+
+    --border: rgba(148, 163, 184, 0.22);
+    --ring: rgba(96, 165, 250, 0.35);
+  }
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, var(--font-geist-sans), system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "tnum" 1, "liga" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+}

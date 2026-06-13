@@ -1,0 +1,450 @@
+{
+  "info": {
+    "name": "Pension Local",
+    "_postman_id": "f7a58cf2-9d5c-4c53-9f0d-8e4640f9b8fd",
+    "description": "Local auth + documents flow for Pension AI Analyzer.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth - Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"name\": \"Test User\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register"
+          ]
+        },
+        "description": "Create a test user account."
+      },
+      "response": []
+    },
+    {
+      "name": "Auth - Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "let json = {};",
+              "try { json = pm.response.json(); } catch (e) {}",
+              "if (json.accessToken) {",
+              "  pm.collectionVariables.set(\"jwt\", json.accessToken);",
+              "  pm.environment.set(\"jwt\", json.accessToken);",
+              "}",
+              "if (!json.accessToken) {",
+              "  console.warn(\"No accessToken found in login response\");",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        },
+        "description": "Log in and save accessToken into jwt (collection + environment variables)."
+      },
+      "response": []
+    },
+    {
+      "name": "Auth - Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "me"
+          ]
+        },
+        "description": "Get current authenticated user."
+      },
+      "response": []
+    },
+    {
+      "name": "Documents - Upload PDF",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "let json = {};",
+              "try { json = pm.response.json(); } catch (e) {}",
+              "if (json.documentId) {",
+              "  pm.collectionVariables.set(\"documentId\", json.documentId);",
+              "  pm.environment.set(\"documentId\", json.documentId);",
+              "}",
+              "if (json.jobId) {",
+              "  pm.collectionVariables.set(\"jobId\", json.jobId);",
+              "  pm.environment.set(\"jobId\", json.jobId);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{pdfPath}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/documents",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documents"
+          ]
+        },
+        "description": "Upload a PDF document (requires JWT)."
+      },
+      "response": []
+    },
+    {
+      "name": "Documents - Get Analysis",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documents/{{documentId}}/analysis?targetMonthlyPension={{targetMonthlyPension}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documents",
+            "{{documentId}}",
+            "analysis"
+          ],
+          "query": [
+            {
+              "key": "targetMonthlyPension",
+              "value": "{{targetMonthlyPension}}"
+            }
+          ]
+        },
+        "description": "Get structured analysis for a document (optionally set targetMonthlyPension)."
+      },
+      "response": []
+    },
+    {
+      "name": "Documents - Get Extraction",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documents/{{documentId}}/extraction",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documents",
+            "{{documentId}}",
+            "extraction"
+          ]
+        },
+        "description": "Get extraction payload for a document."
+      },
+      "response": []
+    },
+    {
+      "name": "Documents - Get Plan",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documents/{{documentId}}/plan?targetMonthlyPension={{targetMonthlyPension}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documents",
+            "{{documentId}}",
+            "plan"
+          ],
+          "query": [
+            {
+              "key": "targetMonthlyPension",
+              "value": "{{targetMonthlyPension}}"
+            }
+          ]
+        },
+        "description": "Get plan + projection/red flags (optionally set targetMonthlyPension)."
+      },
+      "response": []
+    },
+    {
+      "name": "Documents - Run Simulation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"globalEmployeeIncreasePercent\": {{globalEmployeeIncreasePercent}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/documents/{{documentId}}/simulations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documents",
+            "{{documentId}}",
+            "simulations"
+          ]
+        },
+        "description": "Run a custom simulation scenario for a document."
+      },
+      "response": []
+    },
+    {
+      "name": "Jobs - Get Job",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/jobs/{{jobId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "jobs",
+            "{{jobId}}"
+          ]
+        },
+        "description": "Get a job status by jobId."
+      },
+      "response": []
+    },
+    {
+      "name": "Tasks - Get Tasks for Document",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "let json = [];",
+              "try { json = pm.response.json(); } catch (e) {}",
+              "if (Array.isArray(json) && json.length > 0 && json[0].id) {",
+              "  pm.collectionVariables.set(\"taskId\", json[0].id);",
+              "  pm.environment.set(\"taskId\", json[0].id);",
+              "  if (json[0].status) {",
+              "    pm.collectionVariables.set(\"taskStatus\", json[0].status);",
+              "    pm.environment.set(\"taskStatus\", json[0].status);",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/documents/{{documentId}}/tasks",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "documents",
+            "{{documentId}}",
+            "tasks"
+          ]
+        },
+        "description": "List tasks for a document (also tries to auto-set taskId)."
+      },
+      "response": []
+    },
+    {
+      "name": "Tasks - Update Task Status",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"{{taskStatus}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/tasks/{{taskId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "tasks",
+            "{{taskId}}"
+          ]
+        },
+        "description": "Update a task status (TODO, IN_PROGRESS, DONE, DISMISSED)."
+      },
+      "response": []
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "email",
+      "value": "test.user@example.com"
+    },
+    {
+      "key": "password",
+      "value": "StrongPass123!"
+    },
+    {
+      "key": "jwt",
+      "value": ""
+    },
+    {
+      "key": "pdfPath",
+      "value": "/path/to/your.pdf"
+    },
+    {
+      "key": "documentId",
+      "value": ""
+    },
+    {
+      "key": "jobId",
+      "value": ""
+    },
+    {
+      "key": "taskId",
+      "value": ""
+    },
+    {
+      "key": "taskStatus",
+      "value": "DONE"
+    },
+    {
+      "key": "targetMonthlyPension",
+      "value": ""
+    },
+    {
+      "key": "globalEmployeeIncreasePercent",
+      "value": 10
+    }
+  ]
+}

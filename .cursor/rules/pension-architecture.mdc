@@ -53,9 +53,13 @@ alwaysApply: true
   - **Phase 5 extended auth:** Google OAuth, refresh tokens, password reset, email verification, roles/admin. Full specification and implementation order: `docs/PLAN_PHASE5_EXTENDED_AUTH.md`. Use this plan when implementing extended auth in a new conversation.
 
 Before implementing features, review:
+docs/PRODUCT_SPEC.md
 docs/PROJECT_CONTEXT.md
 docs/ARCHITECTURE.md
 docs/DATABASE-SCHEMA.md
 
-After implementing features, update the above docs and this rule file if the change affects behavior, endpoints, data model, or architecture (see `.cursor/rules/docs-sync.mdc`). Add or extend tests for every new feature (unit and/or e2e as appropriate); see `docs/TESTING.md`.
+After implementing features:
+1. Update the above docs and this rule file if the change affects behavior, endpoints, data model, or architecture (see `.cursor/rules/docs-sync.mdc`).
+2. Add or extend tests for every new feature (unit and/or e2e as appropriate); see `docs/TESTING.md`.
+3. **Commit automatically:** Stage all changes (`git add -A`), then commit with a short message describing the feature (e.g. `Phase 5: User accounts, JWT auth`). If `git commit` fails with `unknown option 'trailer'`, use the full path to `git.exe` and `--no-verify` (e.g. `& "C:\Program Files\Git\cmd\git.exe" -C <repo-root> commit --no-verify -m "message"`). Do not push unless the user asks to push.
 
