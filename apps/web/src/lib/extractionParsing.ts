@@ -11,6 +11,7 @@ export type RedFlagLike = {
   message?: string;
   field?: string;
   value?: unknown;
+  threshold?: unknown;
 };
 
 export function getThingsToCheck(structured: unknown): string[] {

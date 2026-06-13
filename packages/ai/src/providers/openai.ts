@@ -69,6 +69,9 @@ export async function callOpenAI(
         messages,
         temperature,
         max_tokens: maxTokens,
+        // Force the model to emit a single valid JSON object (prompt already instructs JSON).
+        // Guards against the model returning prose for off-topic documents.
+        response_format: { type: 'json_object' },
       },
       { signal: controller.signal },
     );

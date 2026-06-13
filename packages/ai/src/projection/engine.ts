@@ -102,6 +102,32 @@ export function computeProjection(extraction: PensionExtraction): ProjectionResu
 
   const gaps: GapFlag[] = [];
 
+  // Data-integrity reconciliation: if we can sum current balances from the plans
+  // AND the document reports its own current-savings total, they should agree.
+  // A large mismatch usually means the extractor mislabeled a projection total as
+  // current savings. Surface it instead of silently preferring the plan sum.
+  if (
+    currentFromPlans != null &&
+    currentFromPlans > 0 &&
+    typeof extraction.totalCurrentSavings === 'number' &&
+    extraction.totalCurrentSavings > 0
+  ) {
+    const reported = extraction.totalCurrentSavings;
+    const relativeDiff =
+      Math.abs(reported - currentFromPlans) / currentFromPlans;
+    if (relativeDiff > 0.01) {
+      gaps.push({
+        id: 'current-savings-mismatch',
+        severity: 'medium',
+        category: 'data-completeness',
+        message:
+          'The total current savings reported in the document does not match the sum of per-plan balances. You may want to verify which figure is correct.',
+        field: 'totalCurrentSavings',
+        value: { reported, sumOfPlans: currentFromPlans },
+      });
+    }
+  }
+
   const hasAnyProjectionValue =
     totalProjectedWithDeposits != null ||
     totalProjectedNoDeposits != null ||

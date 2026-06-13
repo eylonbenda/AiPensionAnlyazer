@@ -15,8 +15,10 @@ import { TaskList } from "@/components/analysis/TaskList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { analysisCopy } from "@/lib/analysisLocale";
-import { detectInitialLocale, persistLocale, toggleLocale, type Locale } from "@/lib/locale";
-import { getGapStatusLabel, getPlanStatusLabel, getTaskPriorityLabel, getTaskStatusLabel } from "@/lib/localeMaps";
+import { type Locale } from "@/lib/locale";
+import { useLocale } from "@/providers/LocaleProvider";
+import { getGapStatusLabel, getPlanStatusLabel, getTaskCopy, getTaskPriorityLabel, getTaskStatusLabel } from "@/lib/localeMaps";
+import { formatFlag } from "@/lib/flagLocale";
 import type { PensionAnalysis } from "@/lib/analysisTypes";
 import { formatCurrency } from "@/lib/analysisUi";
 import { mockAnalysisData } from "@/lib/mockAnalysisData";
@@ -28,21 +30,14 @@ export default function AnalysisPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { token, loading } = useAuth();
+  const { locale, toggle: toggleLanguage } = useLocale();
   const [activeTab, setActiveTab] = useState<AnalysisTab>("overview");
-  const [locale, setLocale] = useState<Locale>("en");
   const [analysis, setAnalysis] = useState<PensionAnalysis | null>(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [extractionNotice, setExtractionNotice] = useState<string | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const copy = analysisCopy[locale];
-
-  useEffect(() => {
-    setLocale(detectInitialLocale());
-  }, []);
-
-  useEffect(() => {
-    persistLocale(locale);
-  }, [locale]);
 
   useEffect(() => {
     if (!loading && !token) {
@@ -57,7 +52,7 @@ export default function AnalysisPage() {
     const resolvedDocumentId = qpDocumentId ?? storedDocumentId;
     if (!resolvedDocumentId) {
       setSelectedDocumentId(null);
-      setAnalysis(localizeAnalysisContent(mockAnalysisData, locale));
+      setAnalysis(localizeAnalysisContent(mockAnalysisData, locale, true));
       return;
     }
     const documentIdValue = resolvedDocumentId;
@@ -76,7 +71,9 @@ export default function AnalysisPage() {
           apiGetExtraction(token, documentIdValue),
         ]);
         if (cancelled) return;
-        const mapped = mapApiToPensionAnalysis(analysisRes, extractionRes);
+        const mapped = mapApiToPensionAnalysis(analysisRes, extractionRes, locale);
+        const hasNoPlans = mapped.structuredData.plans.length === 0;
+        setExtractionNotice(extractionRes.analysisError || (hasNoPlans ? "NO_DATA" : null));
         setAnalysis(localizeAnalysisContent(mapped, locale));
       } catch (err) {
         if (cancelled) return;
@@ -151,7 +148,7 @@ export default function AnalysisPage() {
     return (
       <main dir={copy.dir} className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={() => setLocale(toggleLocale(locale))}>
+          <Button variant="outline" size="sm" onClick={toggleLanguage}>
             {copy.language}
           </Button>
         </div>
@@ -186,10 +183,22 @@ export default function AnalysisPage() {
   return (
     <main dir={copy.dir} className="mx-auto w-full max-w-7xl space-y-9 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => setLocale(toggleLocale(locale))}>
+        <Button variant="outline" size="sm" onClick={toggleLanguage}>
           {copy.language}
         </Button>
       </div>
+      {extractionNotice ? (
+        <Card className="border-amber-300/70 bg-amber-50/70 p-4">
+          <div className="text-sm font-semibold text-amber-900">
+            {locale === "he" ? "לא חולצו נתוני פנסיה מהמסמך" : "No pension data was extracted from this document"}
+          </div>
+          <div className="mt-1 text-sm text-amber-800">
+            {locale === "he"
+              ? "ייתכן שהקובץ שהועלה אינו דוח פנסיה, או שלא ניתן היה לקרוא אותו. נסו להעלות דוח פנסיה עדכני."
+              : "The uploaded file may not be a pension report, or it could not be read. Try uploading a recent pension statement."}
+          </div>
+        </Card>
+      ) : null}
       <AnalysisHero analysis={analysis} locale={locale} reportLabel={copy.heroLabel} updatedLabel={copy.updated} />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-5">
@@ -416,7 +425,7 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function localizeAnalysisContent(analysis: PensionAnalysis, locale: Locale): PensionAnalysis {
+function localizeAnalysisContent(analysis: PensionAnalysis, locale: Locale, isMock = false): PensionAnalysis {
   if (locale !== "he") return analysis;
 
   const flagMap: Record<string, { title: string; message: string; evidence?: string }> = {
@@ -457,50 +466,87 @@ function localizeAnalysisContent(analysis: PensionAnalysis, locale: Locale): Pen
     plan_3: { planName: "תוכנית ותיקה", productType: "ביטוח פנסיוני" },
   };
 
+  // Demo-only string overrides (report title, provider summary, hardcoded
+  // plan/flag/task names, simulation notes) must apply ONLY to the mock dataset.
+  // For real extracted data they would clobber genuine values, since real plans
+  // also receive ids plan_1/plan_2/plan_3.
   return {
     ...analysis,
-    reportTitle: "דוח פנסיה שנתי 2025",
-    providerSummary: "תצוגה מאוחדת של כלל + מנורה + מגדל",
-    flags: analysis.flags.map((flag) => ({
-      ...flag,
-      title: flagMap[flag.id]?.title ?? flag.title,
-      message: flagMap[flag.id]?.message ?? flag.message,
-      evidence: flagMap[flag.id]?.evidence ?? flag.evidence,
-    })),
-    tasks: analysis.tasks.map((task) => ({
-      ...task,
-      title: taskMap[task.id]?.title ?? task.title,
-      description: taskMap[task.id]?.description ?? task.description,
-    })),
-    simulation: analysis.simulation
-      ? {
-          ...analysis.simulation,
-          notes: [
-            "הסימולציה מניחה גידול שכר שנתי של 3%.",
-            "ההפקדה החודשית גדלה ב-8% החל מהרבעון הבא.",
-            "הנחות תשואת השוק נותרו ללא שינוי.",
-          ],
-        }
-      : analysis.simulation,
+    reportTitle: isMock ? "דוח פנסיה שנתי 2025" : analysis.reportTitle,
+    providerSummary: isMock ? "תצוגה מאוחדת של כלל + מנורה + מגדל" : analysis.providerSummary,
+    flags: analysis.flags.map((flag) => {
+      const formatted = formatFlag(locale, {
+        id: flag.id,
+        category: flag.category,
+        message: flag.message,
+        field: flag.field,
+        value: flag.value,
+        threshold: flag.threshold,
+      });
+      const mock = isMock ? flagMap[flag.id] : undefined;
+      return {
+        ...flag,
+        title: mock?.title ?? formatted.title,
+        message: mock?.message ?? formatted.message,
+        evidence: mock?.evidence ?? flag.evidence,
+      };
+    }),
+    tasks: analysis.tasks.map((task) => {
+      const keyed = getTaskCopy(locale, task.taskKey, { title: task.title, description: task.description });
+      const mock = isMock ? taskMap[task.id] : undefined;
+      return {
+        ...task,
+        title: mock?.title ?? keyed.title,
+        description: mock?.description ?? keyed.description,
+      };
+    }),
+    simulation:
+      isMock && analysis.simulation
+        ? {
+            ...analysis.simulation,
+            notes: [
+              "הסימולציה מניחה גידול שכר שנתי של 3%.",
+              "ההפקדה החודשית גדלה ב-8% החל מהרבעון הבא.",
+              "הנחות תשואת השוק נותרו ללא שינוי.",
+            ],
+          }
+        : analysis.simulation,
     structuredData: {
       ...analysis.structuredData,
       plans: analysis.structuredData.plans.map((plan) => ({
         ...plan,
-        planName: planMap[plan.id]?.planName ?? plan.planName,
-        productType: planMap[plan.id]?.productType ?? plan.productType,
+        planName: (isMock ? planMap[plan.id]?.planName : undefined) ?? plan.planName,
+        productType: (isMock ? planMap[plan.id]?.productType : undefined) ?? plan.productType,
       })),
     },
   };
 }
 
-function mapApiToPensionAnalysis(analysis: AnalysisPlanResponse, extraction: ExtractionResponse): PensionAnalysis {
+function mapApiToPensionAnalysis(
+  analysis: AnalysisPlanResponse,
+  extraction: ExtractionResponse,
+  locale: Locale = "en",
+): PensionAnalysis {
   const structured = (extraction.structured as Record<string, unknown> | null) ?? {};
   const plansRaw = getPlans(extraction.structured);
   const flagsRaw = getRedFlags(analysis.redFlags);
 
+  // Build a clean title from the providers in the report; fall back to a generic label.
+  const providerNames = Array.from(
+    new Set(
+      plansRaw
+        .map((p) => (typeof p.providerCompany === "string" ? p.providerCompany.trim() : ""))
+        .filter((name) => name.length > 0),
+    ),
+  );
+  const genericTitle = locale === "he" ? "דוח פנסיה" : "Pension report";
+  // Use provider names as the title only when there are 1–2; more would clutter the hero.
+  const reportTitle =
+    providerNames.length > 0 && providerNames.length <= 2 ? providerNames.join(" · ") : genericTitle;
+
   return {
     id: analysis.documentId,
-    reportTitle: `Document ${analysis.documentId}`,
+    reportTitle,
     providerSummary: analysis.summary ?? undefined,
     status: analysis.job?.status === "FAILED" ? "FAILED" : analysis.job?.status === "DONE" ? "READY" : "PROCESSING",
     lastUpdatedAt: analysis.job?.updatedAt ?? new Date().toISOString(),
@@ -516,19 +562,12 @@ function mapApiToPensionAnalysis(analysis: AnalysisPlanResponse, extraction: Ext
               ? plan.plan_name
               : undefined,
         productType: typeof plan.productType === "string" ? plan.productType : undefined,
-        currentBalance: typeof plan.currentBalance === "number" ? plan.currentBalance : undefined,
-        projectedBalanceWithDeposits:
-          typeof plan.projectedBalanceWithDeposits === "number" ? plan.projectedBalanceWithDeposits : undefined,
-        monthlyPensionWithDeposits:
-          typeof plan.monthlyPensionWithDeposits === "number" ? plan.monthlyPensionWithDeposits : undefined,
-        managementFeeFromSavingsPercent:
-          typeof plan.managementFeeFromSavingsPercent === "number" ? plan.managementFeeFromSavingsPercent : undefined,
-        managementFeeFromPremiumPercent:
-          typeof plan.managementFeeFromPremiumPercent === "number" ? plan.managementFeeFromPremiumPercent : undefined,
-        status:
-          typeof plan.status === "string" && (plan.status === "ACTIVE" || plan.status === "INACTIVE" || plan.status === "UNKNOWN")
-            ? plan.status
-            : "UNKNOWN",
+        currentBalance: toNum(plan.currentBalance),
+        projectedBalanceWithDeposits: toNum(plan.projectedBalanceWithDeposits),
+        monthlyPensionWithDeposits: toNum(plan.monthlyPensionWithDeposits),
+        managementFeeFromSavingsPercent: toNum(plan.managementFeeFromSavingsPercent),
+        managementFeeFromPremiumPercent: toNum(plan.managementFeeFromPremiumPercent),
+        status: normalizePlanStatus(plan.status),
       })),
     },
     flags: flagsRaw.map((flag, idx) => ({
@@ -536,7 +575,12 @@ function mapApiToPensionAnalysis(analysis: AnalysisPlanResponse, extraction: Ext
       severity: normalizeSeverity(flag.severity),
       title: typeof flag.category === "string" ? flag.category : `Flag ${idx + 1}`,
       message: typeof flag.message === "string" ? flag.message : "Please review this issue.",
-      evidence: typeof flag.field === "string" ? `${flag.field}` : undefined,
+      // Evidence hidden for now — it exposed the raw technical field path (e.g. plans[1].managementFeeFromSavingsPercent).
+      evidence: undefined,
+      category: typeof flag.category === "string" ? flag.category : undefined,
+      value: flag.value,
+      threshold: flag.threshold,
+      field: typeof flag.field === "string" ? flag.field : undefined,
     })),
     projection: {
       totalCurrentBalance: analysis.projection?.totalCurrentBalance ?? 0,
@@ -559,12 +603,44 @@ function mapApiToPensionAnalysis(analysis: AnalysisPlanResponse, extraction: Ext
     simulation: undefined,
     tasks: analysis.tasks.map((task) => ({
       id: task.id,
+      taskKey: task.taskKey,
       title: task.title,
       description: task.description,
       priority: task.priority,
       status: task.status,
     })),
   };
+}
+
+/**
+ * Coerce a value to a finite number, accepting both JSON numbers and numeric
+ * strings (the extractor may emit either, depending on locale/number handling).
+ * Strips thousands separators and currency/percent symbols before parsing.
+ */
+function toNum(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[,\s₪%]/g, "");
+    if (cleaned === "") return undefined;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function normalizePlanStatus(status: unknown): "ACTIVE" | "INACTIVE" | "UNKNOWN" {
+  if (typeof status !== "string") return "UNKNOWN";
+  const s = status.trim().toLowerCase();
+  if (!s) return "UNKNOWN";
+  // Check inactive first — Hebrew "לא פעיל" contains the active token "פעיל".
+  if (s.includes("לא פעיל") || s.includes("inactive") || s.includes("closed") || s.includes("סגור")) {
+    return "INACTIVE";
+  }
+  if (s.includes("פעיל") || s.includes("active") || s.includes("open")) {
+    return "ACTIVE";
+  }
+  if (s === "unknown" || s.includes("לא ידוע")) return "UNKNOWN";
+  return "UNKNOWN";
 }
 
 function normalizeSeverity(severity: unknown): "HIGH" | "MEDIUM" | "LOW" | "INFO" {

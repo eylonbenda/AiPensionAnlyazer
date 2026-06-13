@@ -33,6 +33,11 @@ export type AnalysisFlag = {
   title: string;
   message: string;
   evidence?: string;
+  // Raw engine params retained for per-locale message formatting.
+  category?: string;
+  value?: unknown;
+  threshold?: unknown;
+  field?: string;
 };
 
 export type ProjectionData = {
@@ -63,6 +68,7 @@ export type SimulationData = {
 
 export type AnalysisTask = {
   id: string;
+  taskKey?: string;
   title: string;
   description: string;
   priority: TaskPriority;

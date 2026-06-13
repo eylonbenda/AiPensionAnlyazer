@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Pension AI Analyzer** — a backend pipeline that ingests Israeli pension PDFs, extracts structured data via AI, and exposes analysis (red flags, projections, retirement gap, simulations, tasks) through a REST API. No frontend exists yet.
+**Pension AI Analyzer** — ingests Israeli pension PDFs, extracts structured data via AI, and exposes analysis (red flags, projections, retirement gap, simulations, tasks) through a REST API, with a Next.js web frontend (`apps/web`) for login, upload, and the analysis dashboard.
 
 The long-term vision is a "Waze for Pension" — guiding users step-by-step to improve their retirement readiness.
 
@@ -44,6 +44,11 @@ pnpm --filter @pension-analyzer/ai test             # AI package tests (Vitest; 
 ```
 Run a single test file: `pnpm --filter @pension-analyzer/api test -- --testPathPattern=auth.service`
 
+### Gotchas (learned the hard way)
+- **`pnpm run db:migrate` hangs** when there's nothing to migrate (`prisma migrate dev` prompts interactively, which blocks non-interactive runs). To check/apply non-interactively: `npx dotenv -e .env -- pnpm --filter @pension-analyzer/database exec prisma migrate status` (or `migrate deploy`).
+- **API & worker auto-restart on `packages/ai` rebuilds.** They run via `ts-node-dev --respawn` and watch the compiled `ai` dist. Running `pnpm --filter @pension-analyzer/ai build` triggers a respawn — the worker recovers cleanly, but the **API has crashed (port 3004 never re-binds)**. If login fails with "Failed to fetch", restart the API: `pnpm --filter @pension-analyzer/api start:dev`.
+- Plan `status` arrives in Hebrew (`"פעיל"` / `"לא פעיל"`). Normalize with `normalizePlanStatus()` (checks inactive before active, since `"לא פעיל"` contains `"פעיל"`). The pie chart only plots `status === "ACTIVE"` plans with `currentBalance > 0`.
+
 ### Environment
 Copy `.env.example` to `.env`. Key variables:
 - `DATABASE_URL` — Postgres (use port `5433` with docker-compose)
@@ -57,8 +62,9 @@ Copy `.env.example` to `.env`. Key variables:
 ### Workspace layout
 ```
 apps/
-  api/      NestJS REST API (HTTP, validation, DB, queueing)
+  api/      NestJS REST API (HTTP, validation, DB, queueing) — runs on port from API_PORT (.env, currently 3004)
   worker/   BullMQ worker (PDF parse, AI extraction, DB writes)
+  web/      Next.js 16 + React 19 + Tailwind v4 frontend (login, upload, /analysis dashboard) — port 3000
 packages/
   ai/       Zod extraction schema + OpenAI/stub provider + projection/simulation/red-flags engines
   database/ Prisma schema and client (single source of truth for DB)
@@ -80,6 +86,13 @@ infra/
    - Wraps `Extraction` creation + `Task` upserts + `Job → DONE` in a Prisma transaction
 4. Client polls `GET /jobs/:jobId` for status, then fetches `GET /documents/:documentId/analysis`
    - API runs projection (`computeProjection`), optional retirement gap, default simulation (`runSimulation`), and returns everything in one payload
+
+### Web frontend & i18n (`apps/web`)
+- Run with `pnpm --filter @pension-analyzer/web dev` (Next.js, port 3000). It calls the API via `NEXT_PUBLIC_API_BASE_URL` in `apps/web/.env.local` (must match `API_PORT`, e.g. `http://localhost:3004`).
+- **Bilingual (en/he) with RTL.** Language is a shared React context: `providers/LocaleProvider.tsx` (`useLocale()`), persisted to localStorage, sets `dir`/`lang` on `<html>`. The header toggle (`components/layout/AppShell.tsx`) flips it app-wide.
+- Localization layers: static UI copy in `lib/analysisLocale.ts`; enum/label maps and task copy in `lib/localeMaps.ts`; dynamic red-flag messages formatted per-locale in `lib/flagLocale.ts`; status/severity normalization + API→UI mapping in `app/analysis/page.tsx`.
+- **`localizeAnalysisContent(analysis, locale, isMock)`** in `app/analysis/page.tsx`: the `isMock` flag gates demo-only string overrides (hardcoded plan/flag/task names, report title). Real extracted data passes `isMock=false` — never clobber real values with the mock maps.
+- Extraction values can arrive as numbers or numeric strings — use the `toNum()` coercion helper in the mapper, not bare `typeof x === "number"` guards.
 
 ### AI usage boundary
 AI is **only** used for structured text extraction (`packages/ai/src/extractor.ts`). Rules, projections, simulations, and task generation are all deterministic code. This is intentional — keep it this way.

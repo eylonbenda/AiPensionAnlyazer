@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/providers/AuthProvider";
+import { LocaleProvider } from "@/providers/LocaleProvider";
 import { RouteShell } from "@/components/layout/RouteShell";
 
 const geistSans = Geist({
@@ -31,7 +32,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>
-          <RouteShell>{children}</RouteShell>
+          <LocaleProvider>
+            <RouteShell>{children}</RouteShell>
+          </LocaleProvider>
         </AuthProvider>
       </body>
     </html>

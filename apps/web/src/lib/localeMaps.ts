@@ -37,6 +37,50 @@ export function getPlanStatusLabel(locale: Locale, status: PlanStatus): string {
   return planStatusLabelMap[locale][status];
 }
 
+const taskCopyMap: Record<string, { title: string; description: string }> = {
+  UPLOAD_LATEST_REPORT: {
+    title: 'העלאת דוח הפנסיה העדכני',
+    description: 'העלו את דוח הפנסיה העדכני ביותר כדי שהניתוח ישקף מידע מעודכן.',
+  },
+  CHECK_MULTIPLE_PLANS: {
+    title: 'לוודא שאין לכם מספר תוכניות פעילות',
+    description: 'נראה שיש לכם מספר תוכניות. כדאי לבדוק האם כולן נחוצות והאם קיימת כפילות.',
+  },
+  CHECK_MGMT_FEES_SAVINGS: {
+    title: 'בדיקת דמי ניהול מהחיסכון',
+    description: 'דמי הניהול מהחיסכון נראים גבוהים באחת התוכניות לפחות. כדאי לבקש הצעת דמי ניהול מעודכנת או השוואה.',
+  },
+  CHECK_MGMT_FEES_PREMIUM: {
+    title: 'בדיקת דמי ניהול מהפרמיה',
+    description: 'דמי הניהול מהפרמיה נראים גבוהים באחת התוכניות לפחות. כדאי לבקש הצעת דמי ניהול מעודכנת או השוואה.',
+  },
+  REQUEST_FEES_INFO: {
+    title: 'בקשת פירוט דמי ניהול מלא',
+    description: 'מידע על דמי הניהול חסר או חלקי. כדאי לבקש מהגוף המנהל פירוט מלא של דמי הניהול.',
+  },
+  VERIFY_DEPOSITS_STATUS: {
+    title: 'אימות הפקדות אחרונות ופרטי הפרשות',
+    description: 'בחלק מהתוכניות נראה שמידע על הפקדות והפרשות חסר או לא מעודכן. כדאי לוודא שההפקדות מתבצעות כצפוי.',
+  },
+  VERIFY_PLAN_STATUS: {
+    title: 'אימות סטטוס ויתרות התוכניות',
+    description: 'חלק מהתוכניות נראות לא פעילות או עם סטטוס לא ברור, אך עדיין מציגות יתרה. כדאי לוודא את הסטטוס וכיצד מתנהלות התוכניות הללו.',
+  },
+  REVIEW_RETIREMENT_TARGET: {
+    title: 'בחינת יעד הפרישה מול הקצבה הצפויה',
+    description: 'הקצבה החודשית הצפויה נמוכה מהיעד שלכם. כדאי לבחון את ההנחות, רמת ההפקדה וסטטוס התוכניות מול איש מקצוע.',
+  },
+};
+
+export function getTaskCopy(
+  locale: Locale,
+  taskKey: string | undefined,
+  fallback: { title: string; description: string },
+): { title: string; description: string } {
+  if (locale !== 'he' || !taskKey) return fallback;
+  return taskCopyMap[taskKey] ?? fallback;
+}
+
 export function getSeverityLabel(locale: Locale, severity: string): string {
   if (locale === 'en') return severity;
   const s = severity.toLowerCase();
