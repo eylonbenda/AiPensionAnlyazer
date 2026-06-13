@@ -106,17 +106,25 @@ All document/job/task endpoints require `JwtAuthGuard`. Always scope DB queries 
 - **New background step:** Extend `apps/worker/src/main.ts` following the existing `processJobById` locking pattern; never throw unhandled errors — capture them in `job.error` or `extraction.analysisError`.
 - **Zod transforms:** Use `.nullable().optional().transform(v => v ?? default)` in schemas rather than scattered null-checks downstream.
 
-### Docs sync rule (from `.cursor/rules/docs-sync.mdc`)
-After any code change that affects endpoints, data flow, or DB schema, update:
-- `docs/ARCHITECTURE.md` (sequence diagram, component list, endpoint list)
-- `docs/DATABASE-SCHEMA.md` (models, enums, relations)
-- `docs/PROJECT_CONTEXT.md` (engine descriptions, product flow)
-- `.cursor/rules/pension-architecture.mdc` (architecture principles)
-
-Do doc updates in the same commit as the code change.
+### Docs sync rule
+After any code change that affects endpoints, data flow, or DB schema, keep the docs in sync (same commit as the code change). This is automated by the **`update-docs` skill** (`.claude/skills/update-docs/`), which is invoked when a change touches behavior, endpoints, or schema. See that skill for the full convention.
 
 ### Safety rule
 Never use financial advice language. All AI output and analysis must use neutral phrasing: "you may want to check", "consider verifying". Never log raw document text.
+
+## Project documentation
+
+Compact references always loaded into context:
+
+@docs/DATABASE-SCHEMA.md
+@docs/TESTING.md
+
+Larger docs — read on demand when relevant (not auto-loaded, to keep context lean):
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — processing flow, sequence diagram, component + endpoint list
+- [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) — product flow, engine descriptions, roadmap
+- [docs/PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) — product specification
+- [docs/PLAN_PHASE5_EXTENDED_AUTH.md](docs/PLAN_PHASE5_EXTENDED_AUTH.md) — extended-auth implementation plan
+- [docs/FEATURE_LOG.md](docs/FEATURE_LOG.md) — change log
 
 ## Pending work
 - **Phase 5 extended auth** (Google OAuth, refresh tokens, password reset, email verification, roles): full spec at `docs/PLAN_PHASE5_EXTENDED_AUTH.md`.
