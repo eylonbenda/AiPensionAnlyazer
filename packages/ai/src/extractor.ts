@@ -51,6 +51,36 @@ const STUB_PAYLOAD: PensionExtraction = {
   thingsToCheck: [],
 };
 
+function sumDefined(values: Array<number | null | undefined>): number | null {
+  const nums = values.filter(
+    (v): v is number => typeof v === 'number' && Number.isFinite(v),
+  );
+  return nums.length > 0 ? nums.reduce((a, b) => a + b, 0) : null;
+}
+
+/**
+ * Derive document-level totals from the authoritative per-plan data.
+ * The model reliably extracts each plan's currentBalance/projected values, but is
+ * error-prone (and generation-unstable) when asked to pick the right document-level
+ * "סה"כ" cell — it commonly maps a projection total into totalCurrentSavings.
+ * When plans are present, prefer the per-plan sums as the source of truth.
+ */
+function deriveDocumentTotals(data: PensionExtraction): PensionExtraction {
+  const plans = Array.isArray(data.plans) ? data.plans : [];
+  if (plans.length === 0) return data;
+
+  const currentFromPlans = sumDefined(plans.map((p) => p.currentBalance));
+  const projectedFromPlans = sumDefined(
+    plans.map((p) => p.projectedBalanceWithDeposits),
+  );
+
+  return {
+    ...data,
+    totalCurrentSavings: currentFromPlans ?? data.totalCurrentSavings,
+    totalProjectedSavings: projectedFromPlans ?? data.totalProjectedSavings,
+  };
+}
+
 function useStub(): boolean {
   const provider = process.env.AI_PROVIDER;
   return provider === 'stub' || !isOpenAIConfigured();
@@ -95,7 +125,7 @@ export async function extractStructured(
     return {
       ok: true,
       result: {
-        json: parsed1.data,
+        json: deriveDocumentTotals(parsed1.data),
         rawModelOutput: candidate1,
         meta: { provider, model },
       },
@@ -124,7 +154,7 @@ export async function extractStructured(
     return {
       ok: true,
       result: {
-        json: parsed2.data,
+        json: deriveDocumentTotals(parsed2.data),
         rawModelOutput: candidate2,
         meta: { provider, model },
       },

@@ -13,7 +13,7 @@ function getConfig() {
     apiKey,
     model: model || DEFAULT_MODEL,
     temperature: Number.isFinite(temperature) ? temperature : 0,
-    maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 2048,
+    maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 4096,
     timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 60_000,
   };
 }
